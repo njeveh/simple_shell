@@ -4,7 +4,10 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include<signal.h>
+#include <signal.h>
+
+char **argv;
+char *line = NULL, *line2 = NULL;
 
 char *my_strtok_r(char *str, const char *delim, char **save_ptr);
 char **my_str_to_array(char *s, const char *delim);
@@ -18,8 +21,6 @@ void sig_handler(int signum);
  */
 int main(void)
 {
-	char **argv;
-	char *line = NULL, *line2 = NULL;
 	char *line3, *line4;
 	char delim[] = " ";
 	size_t nread = 0, len = 0;
@@ -31,7 +32,7 @@ int main(void)
 	while (1)
 	{
 		printf("#cisfun$ ");
-		nread = getline(&line, &len, stdin)
+		nread = getline(&line, &len, stdin);
 		if (nread != -1)
 		{
 			line2 = malloc(sizeof(*line2) * (strlen(line)));
@@ -93,7 +94,6 @@ int main(void)
 		}
 	}
 	exit(EXIT_SUCCESS);
-
 }
 
 /**
@@ -129,7 +129,7 @@ char **my_str_to_array(char *s, const char *delim)
 	char **arr = NULL;
 	unsigned int i;
 
-	for (i = 0, str = s; ; ++i, str = NULL)
+	for (i = 0, str = s;; ++i, str = NULL)
 	{
 		token = my_strtok_r(str, delim, &save_ptr);
 		/**
@@ -159,7 +159,6 @@ char **my_str_to_array(char *s, const char *delim)
  *
  * Return: pointer to token or Null if none
  */
-
 
 char *my_strtok_r(char *s, const char *delim, char **save_ptr)
 {
