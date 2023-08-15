@@ -1,193 +1,68 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <signal.h>
+#include "shell.h"
 
-char **argv;
-char *line = NULL, *line2 = NULL;
-
-char *my_strtok_r(char *str, const char *delim, char **save_ptr);
-char **my_str_to_array(char *s, const char *delim);
-void sig_handler(int signum);
+int exitcode = 0;
+int errorcount = 0;
 
 /**
- * main - a simple shell program that takes in commands from the
- * terminal and executes them
+ * main - a simple shell program written in C
+ * @argc: number of arguments
+ * @argv: array of arguments
+ * @env: array of environment variables
  *
- * Return: 0 on success
+ * Return: 0 always (but program may exit early)
  */
-int main(void)
-{
-	char *line3, *line4;
-	char delim[] = " ";
-	size_t nread = 0, len = 0;
-	pid_t child_pid;
-	int status;
 
-	signal(SIGINT, sig_handler);
+int main(__attribute__((unused)) int argc, char **argv, char **env)
+{
+	char *user_input = NULL;
+	char **commands = NULL;
+	char **path_array = NULL;
+	size_t nbytes = 0;
+	ssize_t bytes_read = 0;
+	char *NAME = argv[0];
+	int atty_is = isatty(0);
+	char *filename = "splash_screen.txt";
+	FILE *fptr = NULL;
+
+	signal(SIGINT, SIG_IGN);
+
+	// display splash screen
+	if((fptr = fopen(filename,"r")) == NULL)
+	{
+		fprintf(stderr,"error opening %s\n",filename);
+		return 1;
+	}
+	display_splash_screen(fptr);
+	fclose(fptr);
 
 	while (1)
 	{
-		printf("#cisfun$ ");
-		nread = getline(&line, &len, stdin);
-		if (nread != -1)
+		errorcount++;
+		if (atty_is)
+			write(STDOUT_FILENO, "hella_shell$ ", 13);
+		bytes_read = getline(&user_input, &nbytes, stdin);
+		if (bytes_read == -1)
 		{
-			line2 = malloc(sizeof(*line2) * (strlen(line)));
-			if (line2 == NULL)
-			{
-				free(line);
-				line = NULL;
-				exit(1);
-			}
-
-			line3 = line2;
-			line4 = line;
-			while (*line4)
-			{
-				if (*line4 == '\n')
-				{
-					*line3 = '\0';
-					break;
-				}
-				*line3 = *line4;
-				++line3;
-				++line4;
-			}
-			argv = my_str_to_array(line2, delim);
-			if (argv == NULL)
-			{
-				free(line);
-				free(line2);
-				line = NULL;
-				line2 = NULL;
-				exit(1);
-			}
-			char **argv2 = argv;
-
-			child_pid = fork();
-			if (child_pid == 0)
-			{
-
-				printf("Before execve\n");
-				printf("%s", argv2[0]);
-				if (execve(argv2[0], argv2, NULL) == -1)
-				{
-					perror("Error:");
-					printf("\n");
-				}
-			}
-			else
-			{
-				wait(&status);
-				if (line != NULL)
-					free(line);
-				free(line2);
-				free(argv);
-				line = NULL;
-				line2 = NULL;
-				argv = NULL;
-				printf("After execve\n");
-			}
+			free(user_input);
+			exit(exitcode);
+		}
+		if (exit_check(user_input, NAME) == -1)
+			continue;
+		if (blank_check(user_input) == 1)
+			continue;
+		if (env_check(user_input) == 1)
+		{
+			print_env(env);
+			continue;
+		}
+		path_array = get_path_array(env);
+		commands = parse_input(user_input, path_array, NAME);
+		if (commands != NULL)
+		{
+			fork_wait_exec(commands, path_array, env, NAME, user_input);
+			free_array(commands);
+			free_array(path_array);
 		}
 	}
-	exit(EXIT_SUCCESS);
-}
-
-/**
- * sig_handler - handles termination signals by freeing allocated
- * resources first
- * @signum: signal number
- */
-
-void sig_handler(int signum)
-{
-	if (line != NULL)
-		free(line);
-	free(line2);
-	free(argv);
-	line = NULL;
-	line2 = NULL;
-	argv = NULL;
-	signal(signum, SIG_DFL);
-	raise(signum);
-}
-
-/**
- * my_str_to_array - converts an input string into an array of strings
- * @s: the input string
- * @delim: the delimiter on which the input string is split
- *
- * Return: a pointer to an array of character pointers
- */
-
-char **my_str_to_array(char *s, const char *delim)
-{
-	char *str, *token, *save_ptr;
-	char **arr = NULL;
-	unsigned int i;
-
-	for (i = 0, str = s;; ++i, str = NULL)
-	{
-		token = my_strtok_r(str, delim, &save_ptr);
-		/**
-		 *token_len = strlen(token) + 1;
-		 *arr_size += token_len;
-		 */
-		arr = (char **)realloc(arr, (sizeof(char **) * (i + 1)));
-		if (arr == NULL)
-		{
-			return (NULL);
-		}
-		arr[i] = token;
-		if (token == NULL)
-			break;
-	}
-	return (arr);
-}
-
-/**
- * my_strtok_r -  Parse S into tokens separated by characters in DELIM.
- * If S is NULL, the saved pointer in SAVE_PTR is used as
- * the next starting point
- * @s: the string to be broken into tokens
- * @delim: the token separator
- * @save_ptr: the save pointer where the pointer to
- * the next starting point is stored.
- *
- * Return: pointer to token or Null if none
- */
-
-char *my_strtok_r(char *s, const char *delim, char **save_ptr)
-{
-	char *end;
-
-	if (s == NULL)
-		s = *save_ptr;
-	if (*s == '\0')
-	{
-		*save_ptr = s;
-		return (NULL);
-	}
-	/* Scan leading delimiters.  */
-	s += strspn(s, delim);
-	if (*s == '\0')
-	{
-		*save_ptr = s;
-		return (NULL);
-	}
-
-	/* Find the end of the token */
-	end = s + strcspn(s, delim);
-	if (*end == '\0')
-	{
-		*save_ptr = end;
-		return (s);
-	}
-	/* Terminate the token and make *SAVE_PTR point past it. */
-	*end = '\0';
-	*save_ptr = end + 1;
-	return (s);
+	return (0);
 }
